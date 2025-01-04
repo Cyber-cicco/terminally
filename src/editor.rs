@@ -1,9 +1,12 @@
-use std::io::{self, Write};
+use std::io::{stdout, Stdout, Write};
 
 use crossterm::event::{read, Event::Key, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::style::Print;
+use crossterm::{cursor, terminal};
+use crossterm::ExecutableCommand;
 
 pub struct Editor {
+    stdout: Stdout,
     mode: EditorMod,
 }
 
@@ -18,6 +21,7 @@ pub enum EditorMod {
 impl Editor {
     pub fn default() -> Self {
         Editor {
+            stdout: stdout(),
             mode: EditorMod::NORMAL,
         }
     }
@@ -27,14 +31,14 @@ impl Editor {
             match read() {
                 Ok(Key(event)) => match event.code {
                     KeyCode::Char(c) => {
-                        print!("{c}");
+                        self.stdout.execute(Print(c)).unwrap();
                         if c == ':' {
                             self.mode = EditorMod::COMMAND;
                             break;
                         }
                     }
                     KeyCode::Backspace => {
-                        println!("I'm a fucking backspace !!!");
+                        self.stdout.execute(Print("I'm a fucking backspace !!!")).unwrap();
                     }
                     _ => (),
                 },
@@ -50,7 +54,6 @@ impl Editor {
             match read() {
                 Ok(Key(event)) => match event.code {
                     KeyCode::Char(c) => {
-                        print!("{c}");
                         if c == 'q' {
                             self.mode = EditorMod::QUIT;
                             break;
@@ -65,7 +68,10 @@ impl Editor {
     }
 
     pub fn run(&mut self) {
-        enable_raw_mode().unwrap();
+        self.stdout.execute(terminal::EnterAlternateScreen).unwrap();
+        self.stdout.execute(cursor::MoveTo(0,0)).unwrap();
+        terminal::enable_raw_mode().unwrap();
+        // let (x, y) = terminal::size().unwrap();
         loop {
             match &self.mode {
                 EditorMod::NORMAL => self.handle_normal(),
@@ -75,6 +81,6 @@ impl Editor {
                 EditorMod::QUIT => break,
             }
         }
-        disable_raw_mode().unwrap();
+        terminal::disable_raw_mode().unwrap();
     }
 }
