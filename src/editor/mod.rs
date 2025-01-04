@@ -1,5 +1,7 @@
-use std::io::{stdout, Cursor, Stdout, Write};
 mod insertion;
+mod movements;
+use std::io::{stdout, Stdout};
+use std::usize;
 use insertion::handle_enter_key;
 
 use crossterm::event::{read, Event::Key, KeyCode};
@@ -16,8 +18,45 @@ pub struct Editor {
 pub struct Buffer {
     size_x: u16,
     size_y: u16,
+
+    cursor_pos: u64,
+    active: bool,
+
+    on_screen: bool,
+
     characters: Vec<char>,
     line_breaks_pos: Vec<u64>,
+}
+
+impl Buffer {
+    pub fn get_cursor_line(&self) -> usize {
+        let end = self.line_breaks_pos.len() as usize;
+
+        // If there is no line break, you are on line 1
+        if end == 0 {
+            return 1;
+        }
+
+        let mut curr_pos = end / 2;
+        let mut prev_pos = end - 1;
+        let mut prev_positions_vec_lesser = Vec::new();
+        prev_positions_vec_lesser.push(self.line_breaks_pos[prev_pos] < self.cursor_pos);
+        loop {
+            //TODO : finir ça avec une feuille blanche à coté
+            if self.cursor_pos > self.line_breaks_pos[curr_pos] {
+                prev_positions_vec_lesser.push(false);
+                let old_pos = curr_pos;
+                curr_pos = (curr_pos + prev_pos) / 2;
+                prev_pos = curr_pos;
+                continue;
+            }
+            if self.cursor_pos < self.line_breaks_pos[curr_pos] {
+                prev_positions_vec_lesser.push(false);
+                break;
+            }
+        }
+        return curr_pos + 1;
+    }
 }
 
 pub enum EditorMod {
@@ -37,11 +76,7 @@ impl Editor {
         }
     }
 
-    pub fn render_all(&mut self) {
-
-    }
-
-    pub fn handle_normal(&mut self) {
+    fn handle_normal(&mut self) -> Result<(), std::io::Error> {
         loop {
             match read() {
                 Ok(Key(event)) => match event.code {
@@ -50,17 +85,13 @@ impl Editor {
                             self.mode = EditorMod::COMMAND;
                             break;
                         }
-                        self.stdout
-                            .execute(Print(c))
-                            .unwrap();
+                        self.stdout.execute(Print(c))?;
                     }
                     KeyCode::Backspace => {
-                        self.stdout
-                            .execute(Print("I'm a fucking backspace !!!"))
-                            .unwrap();
+                        self.stdout.execute(Print("I'm a fucking backspace !!!"))?;
                     }
                     KeyCode::Enter => {
-                        handle_enter_key(self);
+                        handle_enter_key(self)?;
                     }
                     _ => (),
                 },
@@ -68,11 +99,16 @@ impl Editor {
                 _ => (),
             }
         }
+        Ok(())
     }
 
-    pub fn handle_insertion(&self) {}
-    pub fn handle_visual(&self) {}
-    pub fn handle_command(&mut self) {
+    fn handle_insertion(&self) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+    fn handle_visual(&self) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+    fn handle_command(&mut self) -> Result<(), std::io::Error> {
         loop {
             match read() {
                 Ok(Key(event)) => match event.code {
@@ -88,9 +124,10 @@ impl Editor {
                 _ => (),
             }
         }
+        Ok(())
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<(), std::io::Error> {
         let (x, y) = terminal::size().unwrap();
 
         self.buffers.push(Buffer {
@@ -98,32 +135,31 @@ impl Editor {
             size_y: y,
             characters: Vec::new(),
             line_breaks_pos: Vec::new(),
+            cursor_pos: 0,
+            active: true,
+            on_screen: true,
         });
 
         self.stdout.execute(terminal::EnterAlternateScreen).unwrap();
         terminal::enable_raw_mode().unwrap();
 
         for i in 0..y {
-            self.stdout
-                .execute(cursor::MoveTo(0, i))
-                .unwrap();
-            self.stdout
-                .execute(Print("~"))
-                .unwrap();
+            self.stdout.execute(cursor::MoveTo(0, i))?;
+            self.stdout.execute(Print("~"))?;
         }
 
         self.stdout.execute(cursor::MoveTo(1, 0)).unwrap();
 
         loop {
             match &self.mode {
-                EditorMod::NORMAL => self.handle_normal(),
-                EditorMod::INSERTION => self.handle_insertion(),
-                EditorMod::VISUAL => self.handle_visual(),
-                EditorMod::COMMAND => self.handle_command(),
+                EditorMod::NORMAL => self.handle_normal()?,
+                EditorMod::INSERTION => self.handle_insertion()?,
+                EditorMod::VISUAL => self.handle_visual()?,
+                EditorMod::COMMAND => self.handle_command()?,
                 EditorMod::QUIT => break,
             }
         }
-
         terminal::disable_raw_mode().unwrap();
+        Ok(())
     }
 }
